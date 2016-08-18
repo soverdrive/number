@@ -5,88 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
-func NumberSeparator(n interface{}, sep string, t int) (string, error) {
-	var now_n string
-	var temp_n float64
-	var isfloat bool
-	var isminus bool
-	var isdecimal bool
-
-	temp_n, isfloat, err := NumberToFloat64(n)
-
-	switch val := n.(type) {
-	case int:
-		now_n = strconv.FormatInt(int64(n.(int)), 10)
-		temp_n = float64(n.(int))
-		isfloat = false
-	case int64:
-		now_n = strconv.FormatInt(n.(int64), 10)
-		temp_n = float64(n.(int64))
-		isfloat = false
-	case float32:
-		now_n = strconv.FormatFloat(float64(n.(float32)), 'f', -1, 32)
-		temp_n = float64(n.(float32))
-		isfloat = true
-	case float64:
-		now_n = strconv.FormatFloat(n.(float64), 'f', -1, 64)
-		temp_n = n.(float64)
-		isfloat = true
-	default:
-		return "", errors.New(fmt.Sprintln("[Number Separator] Wrong Data Type", val))
-	}
-
-	startOffset := 0
-	var buff bytes.Buffer
-	if temp_n < 0 {
-		isminus = true
-		startOffset = 1
-		buff.WriteByte('-')
-	}
-	var l int
-	if isfloat {
-		l = strings.Index(now_n, ".") + 1
-		if l > 0 {
-			isdecimal = true
-		}
-		if isminus {
-			l--
-		}
-	}
-	if l <= 0 || !isfloat {
-		l = len(now_n)
-	}
-
-	commaIndex := t - ((l - startOffset) % t)
-	if commaIndex == t {
-		commaIndex = 0
-	}
-	var i int
-	for i = startOffset; i < l; i++ {
-		if commaIndex == t {
-			buff.WriteString(sep)
-			commaIndex = 0
-		}
-		commaIndex++
-		buff.WriteByte(now_n[i])
-	}
-	if isdecimal {
-		buff.Write([]byte(now_n[i:]))
-	}
-
-	return buff.String(), nil
-}
-
-func StringRuneSeparator(s, r string, d int) string {
-
+func ProperFloat64(n float64) float64 {
+	t, _ := strconv.ParseFloat(fmt.Sprintf("%.15f", n), 64)
+	return t
 }
 
 func NumberToFloat64(n interface{}) (float64, bool, error) {
 	var f bool
 	var t float64
 
-	switch val := n.(type) {
+	switch n.(type) {
 	case int:
 		t = float64(n.(int))
 		f = false
@@ -108,9 +39,9 @@ func NumberToFloat64(n interface{}) (float64, bool, error) {
 
 func NumberToInt64(n interface{}) (int64, bool, error) {
 	var f bool
-	var t float64
+	var t int64
 
-	switch val := n.(type) {
+	switch n.(type) {
 	case int:
 		t = int64(n.(int))
 		f = false
@@ -130,7 +61,108 @@ func NumberToInt64(n interface{}) (int64, bool, error) {
 	return t, f, nil
 }
 
-func ProperFloat64(n float64) float64 {
-	t, _ := strconv.ParseFloat(fmt.Sprintf("%.15f", n), 64)
-	return t
+func separator(s, r string, d, ds int, buff *bytes.Buffer) {
+	var l = len(s)
+	var h = ds
+
+	for i := 0; i < l; i++ {
+		if h == d {
+			buff.WriteString(r)
+			h = 0
+		}
+		h++
+		buff.WriteByte(s[i])
+	}
+}
+
+func StringSeparator(s, r string, d int) string {
+	var b bytes.Buffer
+	separator(s, r, d, 0, &b)
+	return b.String()
+}
+
+func numberSeparator(n interface{}, buff *bytes.Buffer, r string, d int) error {
+	var isfloat bool
+
+	t, isfloat, e := NumberToFloat64(n)
+	if e != nil {
+		return e
+	}
+
+	var isminus bool
+	var offset int
+
+	if t < 0 {
+		isminus = true
+		offset = 1
+		buff.WriteByte('-')
+	}
+
+	var ts = strconv.FormatFloat(t, 'f', -1, 64)
+	var l int
+	var isdecimal bool
+
+	if isfloat {
+		l = strings.Index(ts, ".") + 1
+		if l > 0 {
+			isdecimal = true
+		}
+		if isminus {
+			l--
+		}
+	}
+
+	if l <= 0 || !isfloat {
+		l = len(ts)
+	}
+
+	var s_offset int
+	s_offset = d - ((l - offset) % d)
+
+	if s_offset == d {
+		s_offset = 0
+	}
+
+	separator(ts[offset:l], r, d, s_offset, buff)
+
+	if isdecimal {
+		if r == "." {
+			buff.WriteByte(',')
+			l++
+		}
+
+		buff.Write([]byte(ts[l:]))
+	}
+
+	return nil
+}
+
+func MoneyFormat(n interface{}) (string, error) {
+	var buff bytes.Buffer
+
+	e := numberSeparator(n, &buff, ".", 3)
+	if e != nil {
+		return "", e
+	}
+
+	return buff.String(), nil
+}
+
+func IDR(n interface{}) (string, error) {
+	var buff bytes.Buffer
+
+	buff.Write([]byte("Rp "))
+
+	s, e := MoneyFormat(n)
+	if e != nil {
+		return "", e
+	}
+
+	buff.WriteString(s)
+
+	if strings.Index(s, ",") < 0 {
+		buff.Write([]byte(",00"))
+	}
+
+	return buff.String(), nil
 }
